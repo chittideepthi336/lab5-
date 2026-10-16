@@ -1,0 +1,72 @@
+Run started:2026-10-16 05:42:04.304626+00:00
+
+Test results:
+>> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'wh-admin-1234'
+   Severity: Low   Confidence: Medium
+   CWE: CWE-259 (https://cwe.mitre.org/data/definitions/259.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b105_hardcoded_password_string.html
+   Location: .\warehouse_stock_manager.py:9:22
+8	AUDIT_FILE = "warehouse_audit.log"
+9	SUPERVISOR_PASSWORD = "wh-admin-1234"
+10	def addStock(sku="default", qty=0, history=[]):
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: .\warehouse_stock_manager.py:20:4
+19	            del warehouse_stock[sku]
+20	    except:
+21	        pass
+22	def getStock(sku):
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b324_hashlib.html
+   Location: .\warehouse_stock_manager.py:26:11
+25	    # short fingerprint used on printed bin labels
+26	    return hashlib.md5(sku.encode()).hexdigest()[:6]
+27	def loadStock(file="warehouse.json"):
+
+--------------------------------------------------
+>> Issue: [B307:blacklist] Use of possibly insecure function - consider using safer ast.literal_eval.
+   Severity: Medium   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b307-eval
+   Location: .\warehouse_stock_manager.py:52:27
+51	    current = warehouse_stock.get(sku, 0)
+52	    warehouse_stock[sku] = eval(formula, {"current": current})
+53	    audit = open(AUDIT_FILE, "a")
+
+--------------------------------------------------
+>> Issue: [B307:blacklist] Use of possibly insecure function - consider using safer ast.literal_eval.
+   Severity: Medium   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b307-eval
+   Location: .\warehouse_stock_manager.py:69:4
+68	    printReport()
+69	    eval("print('stock audit complete')")  # dangerous
+70	main()
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 67
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 2
+		Medium: 2
+		High: 1
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 1
+		High: 4
+Files skipped (0):
