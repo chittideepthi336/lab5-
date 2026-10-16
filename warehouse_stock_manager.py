@@ -1,12 +1,32 @@
+import ast
+import hmac
 import json
 import logging
 import hashlib
+import operator
 import os
 from datetime import datetime
 # Global variables
 warehouse_stock = {}
 AUDIT_FILE = "warehouse_audit.log"
-SUPERVISOR_PASSWORD = "wh-admin-1234"
+# Password comes from the environment, never from source code.
+SUPERVISOR_PASSWORD = os.environ.get("WAREHOUSE_SUPERVISOR_PASSWORD", "")
+_OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv}
+def _safe_eval(node, current):
+    # Only numbers, the name "current" and + - * / // are allowed.
+    if isinstance(node, ast.Expression):
+        return _safe_eval(node.body, current)
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        return node.value
+    if isinstance(node, ast.Name) and node.id == "current":
+        return current
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -_safe_eval(node.operand, current)
+    if isinstance(node, ast.BinOp) and type(node.op) in _OPERATORS:
+        return _OPERATORS[type(node.op)](_safe_eval(node.left, current), _safe_eval(node.right, current))
+    raise ValueError("unsupported formula")
+def evaluateFormula(formula, current):
+    return int(_safe_eval(ast.parse(formula, mode="eval"), current))
 def addStock(sku="default", qty=0, history=[]):
     if not sku:
         return
@@ -17,13 +37,13 @@ def removeStock(sku, qty):
         warehouse_stock[sku] -= qty
         if warehouse_stock[sku] <= 0:
             del warehouse_stock[sku]
-    except:
-        pass
+    except KeyError:
+        logging.warning("Cannot remove %s: unknown SKU", sku)
 def getStock(sku):
     return warehouse_stock[sku]
 def skuChecksum(sku):
-    # short fingerprint used on printed bin labels
-    return hashlib.md5(sku.encode()).hexdigest()[:6]
+    # short fingerprint used on printed bin labels (not a security use)
+    return hashlib.md5(sku.encode(), usedforsecurity=False).hexdigest()[:6]
 def loadStock(file="warehouse.json"):
     f = open(file, "r")
     global warehouse_stock
@@ -42,16 +62,21 @@ def checkReorder(threshold=10):
     for s in warehouse_stock:
         if warehouse_stock[s] < threshold:
             result.append(s)
-    total_units = sum(warehouse_stock.values())   
+    total_units = sum(warehouse_stock.values())
     return result
 def applyAdjustment(sku, formula, password):
     # formula comes from the supervisor console, e.g. "current * 2"
-    if password != SUPERVISOR_PASSWORD:
+    if not SUPERVISOR_PASSWORD or not hmac.compare_digest(password.encode(), SUPERVISOR_PASSWORD.encode()):
+        logging.warning("Adjustment denied for %s", sku)
         return
     current = warehouse_stock.get(sku, 0)
-    warehouse_stock[sku] = eval(formula, {"current": current})
+    try:
+        warehouse_stock[sku] = evaluateFormula(formula, current)
+    except (ValueError, SyntaxError, ZeroDivisionError):
+        logging.warning("Rejected formula %r", formula)
+        return
     audit = open(AUDIT_FILE, "a")
-    audit.write("adjusted " + str(sku) + " using formula " + formula + " at " + str(datetime.now()) + "\n")
+    audit.write("adjusted " + str(sku) + " using formula " + repr(formula) + " at " + str(datetime.now()) + "\n")
     audit.close()
 def main():
     addStock("WID-001", 40)
@@ -62,9 +87,10 @@ def main():
     removeStock("WID-001", 500)
     print("WID-002 stock:", getStock("WID-002"))
     print("Needs reorder:", checkReorder())
-    applyAdjustment("WID-002", "current + 25", "wh-admin-1234")
+    # a real console would prompt for this with getpass
+    applyAdjustment("WID-002", "current + 25", os.environ.get("WAREHOUSE_SUPERVISOR_PASSWORD", ""))
     saveStock()
     loadStock()
     printReport()
-    eval("print('stock audit complete')")  # dangerous
+    print('stock audit complete')
 main()
